@@ -1,18 +1,17 @@
 package com.example.sleeptrackerapp.activities;
 
 import androidx.appcompat.app.AppCompatActivity;
-import android.app.AlertDialog;
 import android.os.Bundle;
 import android.widget.*;
 import android.view.View;
-import android.text.format.DateFormat;
-
-import com.example.sleeptrackerapp.database.DBHelper;
-import com.example.sleeptrackerapp.R;
-
+import android.content.SharedPreferences;
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.Handler;
+
+import com.example.sleeptrackerapp.database.DBHelper;
+import com.example.sleeptrackerapp.R;
 
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
@@ -21,10 +20,17 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
-    TextView welcomeMsg, avgSleepText, sleepLogText;
-    Button recordSleepBtn;
+    TextView welcomeMsg, avgSleepText, sleepLogText, sleepTimerText;
+    Button timerSleepBtn;
     DBHelper db;
     int userId;
+
+    long sleepStartTime = -1;
+    boolean isTimerRunning = false;
+    SharedPreferences prefs;
+
+    Handler timerHandler = new Handler();
+    Runnable timerRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,36 +40,81 @@ public class MainActivity extends AppCompatActivity {
         welcomeMsg = findViewById(R.id.welcomeText);
         avgSleepText = findViewById(R.id.avgSleepText);
         sleepLogText = findViewById(R.id.sleepLogText);
-        recordSleepBtn = findViewById(R.id.recordSleepBtn);
+        sleepTimerText = findViewById(R.id.sleepTimerText);
+        timerSleepBtn = findViewById(R.id.timerSleepBtn);
 
         db = new DBHelper(this);
         userId = getIntent().getIntExtra("user_id", -1);
+        welcomeMsg.setText("Welcome back " + userId + " !");
 
-        welcomeMsg.setText("Welcome back! User ID: " + userId);
+        prefs = getSharedPreferences("SleepTrackerPrefs", MODE_PRIVATE);
+        sleepStartTime = prefs.getLong("sleepStartTime", -1);
+        isTimerRunning = (sleepStartTime != -1);
+
+        updateButtonText();
         updateStats();
 
-        recordSleepBtn.setOnClickListener(v -> showSleepInputDialog());
-    }
+        if (isTimerRunning) {
+            startSleepTimer();
+        }
 
-    private void showSleepInputDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        View view = getLayoutInflater().inflate(R.layout.dialog_sleep_input, null);
-        EditText hoursInput = view.findViewById(R.id.hoursInput);
-        builder.setView(view);
+        timerSleepBtn.setOnClickListener(v -> {
+            if (!isTimerRunning) {
+                // Start timer
+                sleepStartTime = System.currentTimeMillis();
+                prefs.edit().putLong("sleepStartTime", sleepStartTime).apply();
+                isTimerRunning = true;
+                updateButtonText();
+                startSleepTimer();
+                Toast.makeText(this, "Sleep tracking started.", Toast.LENGTH_SHORT).show();
+            } else {
+                // Stop timer
+                long endTime = System.currentTimeMillis();
+                double hoursSlept = (endTime - sleepStartTime) / (1000.0 * 60 * 60); // ms to hours
+                DecimalFormat df = new DecimalFormat("#.##");
 
-        builder.setTitle("Record Sleep");
-        builder.setPositiveButton("Save", (dialog, which) -> {
-            String hoursStr = hoursInput.getText().toString();
-            if (!hoursStr.isEmpty()) {
-                double hours = Double.parseDouble(hoursStr);
                 String currentDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-                saveSleepData(userId, hours, currentDate);
+                saveSleepData(userId, Double.parseDouble(df.format(hoursSlept)), currentDate);
                 updateStats();
+
+                prefs.edit().remove("sleepStartTime").apply();
+                sleepStartTime = -1;
+                isTimerRunning = false;
+                stopSleepTimer();
+                updateButtonText();
+
+                Toast.makeText(this, "Sleep recorded: " + df.format(hoursSlept) + " hrs", Toast.LENGTH_SHORT).show();
             }
         });
+    }
 
-        builder.setNegativeButton("Cancel", null);
-        builder.create().show();
+    private void updateButtonText() {
+        timerSleepBtn.setText(isTimerRunning ? "Stop & Save Sleep" : "Start Sleep");
+    }
+
+    private void startSleepTimer() {
+        timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long elapsed = System.currentTimeMillis() - sleepStartTime;
+                sleepTimerText.setText("Timer: " + formatDuration(elapsed));
+                timerHandler.postDelayed(this, 1000);
+            }
+        };
+        timerHandler.post(timerRunnable);
+    }
+
+    private void stopSleepTimer() {
+        timerHandler.removeCallbacks(timerRunnable);
+        sleepTimerText.setText("Timer: 00:00:00");
+    }
+
+    private String formatDuration(long durationMillis) {
+        long seconds = durationMillis / 1000;
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, secs);
     }
 
     private void saveSleepData(int userId, double hours, String date) {
@@ -77,7 +128,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateStats() {
         SQLiteDatabase readableDB = db.getReadableDatabase();
-        Cursor cursor = readableDB.rawQuery("SELECT sleep_hours, date FROM sleep WHERE user_id = ?", new String[]{String.valueOf(userId)});
+        Cursor cursor = readableDB.rawQuery(
+                "SELECT sleep_hours, date FROM sleep WHERE user_id = ?",
+                new String[]{String.valueOf(userId)}
+        );
 
         StringBuilder logBuilder = new StringBuilder();
         double totalHours = 0;
