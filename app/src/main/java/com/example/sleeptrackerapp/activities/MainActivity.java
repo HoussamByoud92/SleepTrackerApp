@@ -1,4 +1,5 @@
 package com.example.sleeptrackerapp.activities;
+import android.content.Intent;
 
 import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
@@ -42,10 +43,31 @@ public class MainActivity extends AppCompatActivity {
         sleepLogText = findViewById(R.id.sleepLogText);
         sleepTimerText = findViewById(R.id.sleepTimerText);
         timerSleepBtn = findViewById(R.id.timerSleepBtn);
+        Button logoutBtn = findViewById(R.id.logoutBtn);
+        Button profileBtn = findViewById(R.id.profileBtn);
+
+        logoutBtn.setOnClickListener(v -> {
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.clear();
+            editor.apply();
+
+            Intent intent = new Intent(MainActivity.this, LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK); // Clears backstack
+            startActivity(intent);
+            finish();
+        });
+
+        profileBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, UserProfileActivity.class);
+            intent.putExtra("user_id", userId);
+            startActivity(intent);
+        });
+
 
         db = new DBHelper(this);
         userId = getIntent().getIntExtra("user_id", -1);
-        welcomeMsg.setText("Welcome back " + userId + " !");
+        String username = getIntent().getStringExtra("username");
+        welcomeMsg.setText("Welcome back " +username+" !" );
 
         prefs = getSharedPreferences("SleepTrackerPrefs", MODE_PRIVATE);
         sleepStartTime = prefs.getLong("sleepStartTime", -1);

@@ -16,7 +16,14 @@ public class DBHelper extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS users (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "email TEXT UNIQUE," +
+                "password TEXT," +
+                "username TEXT," +
+                "profile_picture TEXT" +
+                ")");
+
         db.execSQL("CREATE TABLE sleep(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, sleep_hours REAL, date TEXT, FOREIGN KEY(user_id) REFERENCES users(id))");
     }
 
